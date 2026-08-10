@@ -50,6 +50,7 @@ NOTE ON THE EXPLORER:
 import asyncio
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -72,7 +73,20 @@ CONTRACTS = {
 
 EXPLORER_API = "https://liteforge.explorer.caldera.xyz"
 
-POLL_INTERVAL_SECONDS = 600  # 10 minutes
+REQUEST_TIMEOUT = 30       # seconds
+MAX_RETRIES = 3
+RETRY_DELAY_SECONDS = 5
+
+# Some explorers (Cloudflare-protected, anti-bot) reject requests that
+# don't look like they come from a real browser and just hang until they
+# time out. Sending a normal browser User-Agent avoids that in most cases.
+REQUEST_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/json",
+}
 
 STATE_FILE = Path(__file__).parent / "aura_tracker_state.json"
 
@@ -87,11 +101,26 @@ log = logging.getLogger("aura-tracker")
 CANDIDATE_FIELDS = ["transactions_count", "transaction_count", "tx_count", "txCount"]
 
 
+def _get_with_retries(url: str):
+    """GET a URL with a browser-like User-Agent and a few retries."""
+    last_error = None
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            resp = requests.get(url, headers=REQUEST_HEADERS, timeout=REQUEST_TIMEOUT)
+            resp.raise_for_status()
+            return resp
+        except Exception as e:
+            last_error = e
+            log.warning("  attempt %s/%s failed for %s: %s", attempt, MAX_RETRIES, url, e)
+            if attempt < MAX_RETRIES:
+                time.sleep(RETRY_DELAY_SECONDS)
+    raise last_error
+
+
 def fetch_tx_count(address: str) -> int:
     """Returns the total transaction count for one address/contract."""
     url = f"{EXPLORER_API}/api/v2/addresses/{address}"
-    resp = requests.get(url, timeout=15)
-    resp.raise_for_status()
+    resp = _get_with_retries(url)
     data = resp.json()
 
     if DEBUG_MODE:
@@ -106,8 +135,7 @@ def fetch_tx_count(address: str) -> int:
         f"{EXPLORER_API}/api?module=account&action=txlist&address={address}"
         f"&sort=asc"
     )
-    resp2 = requests.get(fallback_url, timeout=15)
-    resp2.raise_for_status()
+    resp2 = _get_with_retries(fallback_url)
     data2 = resp2.json()
     result = data2.get("result", [])
     if isinstance(result, list):
@@ -239,4 +267,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-
