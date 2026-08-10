@@ -118,7 +118,26 @@ def _get_with_retries(url: str):
 
 
 def fetch_tx_count(address: str) -> int:
-    """Returns the total transaction count for one address/contract."""
+    """Returns the total transaction count for one address/contract.
+
+    Uses the lightweight /counters endpoint first — it only returns the
+    numeric counters (transactions_count, etc.) instead of the full
+    address/token payload, which can time out for very high-activity
+    addresses (e.g. a busy token contract with millions of transfers).
+    """
+    counters_url = f"{EXPLORER_API}/api/v2/addresses/{address}/counters"
+    try:
+        resp = _get_with_retries(counters_url)
+        data = resp.json()
+        if DEBUG_MODE:
+            log.info("DEBUG /counters response for %s: %s", address, json.dumps(data)[:800])
+        for field in CANDIDATE_FIELDS:
+            if field in data and data[field] is not None:
+                return int(data[field])
+    except Exception as e:
+        log.warning("  /counters failed for %s, falling back: %s", address, e)
+
+    # Fallback 1: full address endpoint (heavier, may time out on big addresses)
     url = f"{EXPLORER_API}/api/v2/addresses/{address}"
     resp = _get_with_retries(url)
     data = resp.json()
@@ -130,7 +149,7 @@ def fetch_tx_count(address: str) -> int:
         if field in data and data[field] is not None:
             return int(data[field])
 
-    # Fallback: Etherscan-style v1 API (module=account&action=txlist)
+    # Fallback 2: Etherscan-style v1 API (module=account&action=txlist)
     fallback_url = (
         f"{EXPLORER_API}/api?module=account&action=txlist&address={address}"
         f"&sort=asc"
@@ -267,3 +286,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+              
