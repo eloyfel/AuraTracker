@@ -182,7 +182,8 @@ def load_state() -> dict:
     if STATE_FILE.exists():
         return json.loads(STATE_FILE.read_text())
     return {
-        "day_start_counts": {},  # per-contract count at start of the day
+        "last_total": None,       # combined total from the previous run
+        "day_start_counts": {},   # per-contract count at start of the day
         "day_start_date": None,
     }
 
@@ -211,25 +212,40 @@ async def post_periodic_update() -> None:
         return
 
     total = sum(counts.values())
+    state = load_state()
+
+    last_total = state.get("last_total")
+    delta_line = ""
+    if last_total is not None:
+        delta = total - last_total
+        if delta >= 0:
+            delta_line = f"🔺 +{delta:,} since last check\n"
+        else:
+            # combined total went down (e.g. explorer data resync) — just show it plainly
+            delta_line = f"{delta:,} since last check\n"
 
     lines = [
         "📡 *Aura Protocol — Testnet Transaction Update*",
         "",
         f"*Combined total:* {total:,} tx",
+        delta_line.rstrip(),
         "",
     ]
     for label, addr in CONTRACTS.items():
         lines.append(f"{label}: `{addr}`")
 
-    await send_message("\n".join(lines))
+    await send_message("\n".join(line for line in lines if line != ""))
+
+    # Update last_total for the next delta calculation
+    state["last_total"] = total
 
     # Make sure today's baseline exists (in case this is the very first run)
-    state = load_state()
     today = datetime.now(timezone.utc).date().isoformat()
     if state["day_start_date"] != today:
         state["day_start_date"] = today
         state["day_start_counts"] = counts
-        save_state(state)
+
+    save_state(state)
 
 
 async def send_daily_summary() -> None:
@@ -286,4 +302,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-              
+                         
