@@ -49,8 +49,8 @@ jobs:
           if [ -f aura_tracker_state.json ]; then
             git add aura_tracker_state.json
             git diff --cached --quiet || git commit -m "Update tracker state [skip ci]"
+            git pull --rebase origin main
             git push
           else
             echo "aura_tracker_state.json not found (bot run likely failed) — skipping commit"
           fi
-          
