@@ -1,9 +1,9 @@
 {
   "day_start_counts": {
-    "Stake/Unstake": 1321011,
-    "Mint 10 (A)": 403516,
-    "Mint 10 (B)": 330964
+    "Stake/Unstake": 1337137,
+    "Mint 10 (A)": 412101,
+    "Mint 10 (B)": 341211
   },
-  "day_start_date": "2026-08-11",
-  "last_total": 2087914
+  "day_start_date": "2026-08-12",
+  "last_total": 2090449
 }
